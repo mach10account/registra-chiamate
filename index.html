@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registrazione Chiamate</title>
+<style>
+  :root{
+    --bg:#0f1216; --card:#181d24; --line:#2a323d; --txt:#e7edf3; --muted:#9aa7b4;
+    --accent:#3b82f6; --rec:#ef4444; --ok:#22c55e; --warn:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--txt);min-height:100vh;padding:18px}
+  .wrap{max-width:560px;margin:0 auto}
+  h1{font-size:20px;margin:4px 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+  select,input{width:100%;background:#0f141a;border:1px solid var(--line);color:var(--txt);
+    border-radius:10px;padding:12px;font-size:16px;outline:none}
+  .row{display:flex;gap:10px}
+  .row > div{flex:1}
+  .timer{font-size:40px;font-variant-numeric:tabular-nums;text-align:center;margin:14px 0 6px;letter-spacing:1px}
+  .dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:#444;margin-right:8px;vertical-align:middle}
+  .dot.on{background:var(--rec);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .state{text-align:center;color:var(--muted);font-size:13px;margin-bottom:12px}
+  .btns{display:flex;gap:10px}
+  button{flex:1;border:0;border-radius:12px;padding:16px;font-size:16px;font-weight:600;cursor:pointer;color:#fff}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .b-start{background:var(--accent)}
+  .b-stop{background:var(--rec)}
+  .b-pause{background:#374151;flex:0 0 56px}
+  .msg{font-size:13px;padding:10px 12px;border-radius:10px;margin-top:12px;display:none}
+  .msg.show{display:block}
+  .msg.ok{background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.3)}
+  .msg.err{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+  .msg.info{background:rgba(59,130,246,.12);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+  .hist{margin-top:6px}
+  .hist h2{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 8px}
+  .item{display:flex;align-items:center;gap:10px;font-size:13px;padding:9px 0;border-top:1px solid var(--line)}
+  .item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pill{font-size:11px;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .pill.ok{background:rgba(34,197,94,.15);color:#86efac}
+  .pill.err{background:rgba(239,68,68,.15);color:#fca5a5}
+  .pill.up{background:rgba(245,158,11,.15);color:#fcd34d}
+  .link{color:var(--accent);text-decoration:none;font-size:12px}
+  .gdpr{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px}
+  .mini{background:#374151;flex:0 0 auto;padding:7px 12px;font-size:12px;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📞 Registrazione chiamate</h1>
+  <div class="sub">Telefono in <b>vivavoce</b> vicino al microfono. Scegli il centro, premi <b>Avvia</b>.</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Centro</label>
+        <select id="centro"></select>
+      </div>
+      <div>
+        <label>Numero chiamata</label>
+        <input id="numero" type="number" min="1" step="1" inputmode="numeric">
+      </div>
+    </div>
+
+    <div class="timer"><span class="dot" id="dot"></span><span id="time">00:00</span></div>
+    <div class="state" id="state">Pronto</div>
+
+    <div class="btns">
+      <button class="b-start" id="btnStart">● Avvia</button>
+      <button class="b-pause" id="btnPause" disabled>❚❚</button>
+      <button class="b-stop" id="btnStop" disabled>■ Stop &amp; invia</button>
+    </div>
+
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card hist">
+    <h2>Ultime registrazioni</h2>
+    <div id="hist"></div>
+  </div>
+
+  <div class="gdpr">
+    ⚖️ Ricorda di comunicare all'inizio della chiamata che <i>"la chiamata può essere registrata"</i>.
+    Le registrazioni sono archiviate in modo riservato per finalità di qualità/formazione.
+  </div>
+</div>
+
+<script>
+/* ===================== CONFIG ===================== */
+const CONFIG = {
+  // URL del webhook n8n (Production).
+  WEBHOOK_URL: "https://n8n.srv1035791.hstgr.cloud/webhook/registra-chiamata",
+  // Header opzionale di sicurezza (deve combaciare col controllo nel workflow). Lascia "" per disattivare.
+  AUTH_HEADER_NAME: "x-rec-token",
+  AUTH_HEADER_VALUE: "",
+  // Lista centri (placeholder — sostituire con la lista reale).
+  CENTRI: ["Centro 1", "Centro 2", "Centro 3"],
+  AUDIO_BITRATE: 32000   // mono ~0,24 MB/min
+};
+/* ================================================== */
+
+const $ = id => document.getElementById(id);
+let mediaRecorder = null, chunks = [], stream = null;
+let startTs = 0, pausedMs = 0, pauseStart = 0, timerInt = null, usedMime = "";
+
+// --- init UI ---
+CONFIG.CENTRI.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; $("centro").appendChild(o); });
+const savedCentro = localStorage.getItem("rec_centro"); if (savedCentro && CONFIG.CENTRI.includes(savedCentro)) $("centro").value = savedCentro;
+$("numero").value = parseInt(localStorage.getItem("rec_numero") || "1", 10);
+$("centro").addEventListener("change", () => localStorage.setItem("rec_centro", $("centro").value));
+$("numero").addEventListener("change", () => localStorage.setItem("rec_numero", $("numero").value));
+
+function pickMime(){
+  const cands = ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/aac",""];
+  for (const m of cands){ if (m === "" || (window.MediaRecorder && MediaRecorder.isTypeSupported(m))) return m; }
+  return "";
+}
+function extFor(mime){ return mime.indexOf("mp4")>-1 || mime.indexOf("aac")>-1 ? "m4a" : "webm"; }
+function fmt(ms){ const s=Math.floor(ms/1000); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }
+function tick(){ $("time").textContent = fmt(Date.now()-startTs-pausedMs); }
+function showMsg(t,kind){ const m=$("msg"); m.textContent=t; m.className="msg show "+kind; }
+function hideMsg(){ $("msg").className="msg"; }
+
+async function start(){
+  hideMsg();
+  if (!navigator.mediaDevices || !window.MediaRecorder){ showMsg("Browser non supportato. Usa Chrome/Edge.","err"); return; }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, channelCount:1 } });
+  }catch(e){ showMsg("Permesso microfono negato o non disponibile.","err"); return; }
+  usedMime = pickMime();
+  const opts = { audioBitsPerSecond: CONFIG.AUDIO_BITRATE }; if (usedMime) opts.mimeType = usedMime;
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream, opts);
+  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  mediaRecorder.onstop = onStop;
+  mediaRecorder.start(1000); // timeslice → chunk al secondo
+  startTs = Date.now(); pausedMs = 0;
+  timerInt = setInterval(tick, 250);
+  $("dot").classList.add("on"); $("state").textContent = "Registrazione in corso…";
+  $("btnStart").disabled = true; $("btnStop").disabled = false; $("btnPause").disabled = false;
+  $("centro").disabled = true; $("numero").disabled = true;
+}
+
+function togglePause(){
+  if (!mediaRecorder) return;
+  if (mediaRecorder.state === "recording"){
+    try{ mediaRecorder.pause(); }catch(e){}
+    pauseStart = Date.now(); $("dot").classList.remove("on"); $("state").textContent = "In pausa"; $("btnPause").textContent="▶";
+  } else if (mediaRecorder.state === "paused"){
+    try{ mediaRecorder.resume(); }catch(e){}
+    pausedMs += Date.now()-pauseStart; $("dot").classList.add("on"); $("state").textContent="Registrazione in corso…"; $("btnPause").textContent="❚❚";
+  }
+}
+
+function stop(){
+  if (!mediaRecorder) return;
+  $("state").textContent = "Finalizzo…"; $("btnStop").disabled = true; $("btnPause").disabled = true;
+  clearInterval(timerInt); $("dot").classList.remove("on");
+  mediaRecorder.stop();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+}
+
+async function onStop(){
+  const ext = extFor(usedMime || "audio/webm");
+  const blob = new Blob(chunks, { type: (usedMime || "audio/webm").split(";")[0] });
+  const centro = $("centro").value;
+  const numero = parseInt($("numero").value || "0", 10);
+  const ts = new Date();
+  const stamp = ts.getFullYear()+("0"+(ts.getMonth()+1)).slice(-2)+("0"+ts.getDate()).slice(-2)+"_"+
+                ("0"+ts.getHours()).slice(-2)+("0"+ts.getMinutes()).slice(-2)+("0"+ts.getSeconds()).slice(-2);
+  const safeCentro = centro.replace(/[^\p{L}\p{N}]+/gu,"-");
+  const filename = `${safeCentro}_${numero}_${stamp}.${ext}`;
+  const rec = { filename, centro, numero, ts: ts.toISOString(), blob, status:"up", durationMs: Date.now()-startTs-pausedMs };
+  addHistory(rec);
+  await upload(rec);
+  // reset per la chiamata successiva
+  $("btnStart").disabled = false; $("centro").disabled = false; $("numero").disabled = false;
+  $("btnPause").textContent = "❚❚"; $("time").textContent = "00:00"; $("state").textContent = "Pronto";
+  if (rec.status === "ok"){
+    const next = numero + 1; $("numero").value = next; localStorage.setItem("rec_numero", String(next));
+  }
+}
+
+async function upload(rec){
+  setPill(rec.id, "up", "invio…");
+  const fd = new FormData();
+  fd.append("file", rec.blob, rec.filename);
+  fd.append("centro", rec.centro);
+  fd.append("numero", String(rec.numero));
+  fd.append("timestamp", rec.ts);
+  fd.append("filename", rec.filename);
+  fd.append("durata_sec", String(Math.round(rec.durationMs/1000)));
+  fd.append("mime", rec.blob.type);
+  const headers = {}; if (CONFIG.AUTH_HEADER_VALUE) headers[CONFIG.AUTH_HEADER_NAME] = CONFIG.AUTH_HEADER_VALUE;
+  try{
+    const r = await fetch(CONFIG.WEBHOOK_URL, { method:"POST", body:fd, headers });
+    if (!r.ok) throw new Error("HTTP "+r.status);
+    let link = ""; try{ const j = await r.json(); link = j.link || j.webViewLink || ""; }catch(e){}
+    rec.status = "ok"; rec.link = link; setPill(rec.id, "ok", "caricato"); if (link) setLink(rec.id, link);
+    showMsg("✓ "+rec.filename+" caricato su Drive.","ok");
+  }catch(e){
+    rec.status = "err"; setPill(rec.id, "err", "errore");
+    showMsg("✗ Upload fallito ("+e.message+"). File conservato: usa ⬇ per scaricarlo e ↻ per riprovare.","err");
+    setRetry(rec);
+  }
+}
+
+/* ---------- history (in-memory) ---------- */
+let HIST = []; let idSeq = 0;
+function addHistory(rec){ rec.id = ++idSeq; HIST.unshift(rec); renderHist(); }
+function renderHist(){
+  const h = $("hist"); h.innerHTML = "";
+  if (!HIST.length){ h.innerHTML = '<div style="color:#667;font-size:13px">Nessuna ancora.</div>'; return; }
+  HIST.slice(0,12).forEach(rec=>{
+    const row = document.createElement("div"); row.className="item"; row.dataset.id=rec.id;
+    row.innerHTML = `<span class="nm">${rec.filename}</span>
+      <span class="pill ${rec.status}" data-pill>${rec.status==="ok"?"caricato":rec.status==="up"?"invio…":"errore"}</span>
+      <span data-actions></span>`;
+    h.appendChild(row);
+  });
+}
+function rowEl(id){ return document.querySelector('.item[data-id="'+id+'"]'); }
+function setPill(id,kind,txt){ const el=rowEl(id); if(!el)return; const p=el.querySelector("[data-pill]"); p.className="pill "+kind; p.textContent=txt; }
+function setLink(id,link){ const el=rowEl(id); if(!el)return; const a=document.createElement("a"); a.href=link; a.target="_blank"; a.className="link"; a.textContent="apri"; el.querySelector("[data-actions]").appendChild(a); }
+function setRetry(rec){
+  const el=rowEl(rec.id); if(!el)return; const box=el.querySelector("[data-actions]"); box.innerHTML="";
+  const dl=document.createElement("button"); dl.className="mini"; dl.textContent="⬇"; dl.style.flex="0 0 auto";
+  dl.onclick=()=>{ const u=URL.createObjectURL(rec.blob); const a=document.createElement("a"); a.href=u; a.download=rec.filename; a.click(); URL.revokeObjectURL(u); };
+  const rt=document.createElement("button"); rt.className="mini"; rt.textContent="↻"; rt.style.flex="0 0 auto"; rt.style.marginLeft="6px";
+  rt.onclick=()=>upload(rec);
+  box.appendChild(dl); box.appendChild(rt);
+}
+
+$("btnStart").onclick = start;
+$("btnStop").onclick = stop;
+$("btnPause").onclick = togglePause;
+renderHist();
+if (CONFIG.WEBHOOK_URL.indexOf("REPLACE_ME")>-1) showMsg("⚠ Configura WEBHOOK_URL nella sezione CONFIG prima dell'uso.","info");
+</script>
+</body>
+</html>
