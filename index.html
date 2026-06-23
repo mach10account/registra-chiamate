@@ -61,10 +61,6 @@
         <label>Beauty</label>
         <select id="centro"></select>
       </div>
-      <div>
-        <label>Numero chiamata</label>
-        <input id="numero" type="number" min="1" step="1" inputmode="numeric">
-      </div>
     </div>
 
     <div class="timer"><span class="dot" id="dot"></span><span id="time">00:00</span></div>
@@ -84,10 +80,6 @@
     <div id="hist"></div>
   </div>
 
-  <div class="gdpr">
-    ⚖️ Ricorda di comunicare all'inizio della chiamata che <i>"la chiamata può essere registrata"</i>.
-    Le registrazioni sono archiviate in modo riservato per finalità di qualità/formazione.
-  </div>
 </div>
 
 <script>
@@ -111,9 +103,7 @@ let startTs = 0, pausedMs = 0, pauseStart = 0, timerInt = null, usedMime = "";
 // --- init UI ---
 CONFIG.CENTRI.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; $("centro").appendChild(o); });
 const savedCentro = localStorage.getItem("rec_centro"); if (savedCentro && CONFIG.CENTRI.includes(savedCentro)) $("centro").value = savedCentro;
-$("numero").value = parseInt(localStorage.getItem("rec_numero") || "1", 10);
 $("centro").addEventListener("change", () => localStorage.setItem("rec_centro", $("centro").value));
-$("numero").addEventListener("change", () => localStorage.setItem("rec_numero", $("numero").value));
 
 function pickMime(){
   const cands = ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/aac",""];
@@ -143,7 +133,7 @@ async function start(){
   timerInt = setInterval(tick, 250);
   $("dot").classList.add("on"); $("state").textContent = "Registrazione in corso…";
   $("btnStart").disabled = true; $("btnStop").disabled = false; $("btnPause").disabled = false;
-  $("centro").disabled = true; $("numero").disabled = true;
+  $("centro").disabled = true;
 }
 
 function togglePause(){
@@ -169,21 +159,17 @@ async function onStop(){
   const ext = extFor(usedMime || "audio/webm");
   const blob = new Blob(chunks, { type: (usedMime || "audio/webm").split(";")[0] });
   const centro = $("centro").value;
-  const numero = parseInt($("numero").value || "0", 10);
   const ts = new Date();
   const stamp = ts.getFullYear()+("0"+(ts.getMonth()+1)).slice(-2)+("0"+ts.getDate()).slice(-2)+"_"+
                 ("0"+ts.getHours()).slice(-2)+("0"+ts.getMinutes()).slice(-2)+("0"+ts.getSeconds()).slice(-2);
   const safeCentro = centro.replace(/[^\p{L}\p{N}]+/gu,"-");
-  const filename = `${safeCentro}_${numero}_${stamp}.${ext}`;
-  const rec = { filename, centro, numero, ts: ts.toISOString(), blob, status:"up", durationMs: Date.now()-startTs-pausedMs };
+  const filename = `${safeCentro}_${stamp}.${ext}`;
+  const rec = { filename, centro, ts: ts.toISOString(), blob, status:"up", durationMs: Date.now()-startTs-pausedMs };
   addHistory(rec);
   await upload(rec);
   // reset per la chiamata successiva
-  $("btnStart").disabled = false; $("centro").disabled = false; $("numero").disabled = false;
+  $("btnStart").disabled = false; $("centro").disabled = false;
   $("btnPause").textContent = "❚❚"; $("time").textContent = "00:00"; $("state").textContent = "Pronto";
-  if (rec.status === "ok"){
-    const next = numero + 1; $("numero").value = next; localStorage.setItem("rec_numero", String(next));
-  }
 }
 
 async function upload(rec){
@@ -191,7 +177,6 @@ async function upload(rec){
   const fd = new FormData();
   fd.append("file", rec.blob, rec.filename);
   fd.append("centro", rec.centro);
-  fd.append("numero", String(rec.numero));
   fd.append("timestamp", rec.ts);
   fd.append("filename", rec.filename);
   fd.append("durata_sec", String(Math.round(rec.durationMs/1000)));
