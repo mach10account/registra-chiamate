@@ -164,7 +164,7 @@ async function onStop(){
                 ("0"+ts.getHours()).slice(-2)+("0"+ts.getMinutes()).slice(-2)+("0"+ts.getSeconds()).slice(-2);
   const safeCentro = centro.replace(/[^\p{L}\p{N}]+/gu,"-");
   const filename = `${safeCentro}_${stamp}.${ext}`;
-  const rec = { filename, centro, ts: ts.toISOString(), blob, status:"up", durationMs: Date.now()-startTs-pausedMs };
+  const rec = { filename, centro, inizio: new Date(startTs).toISOString(), ts: ts.toISOString(), blob, status:"up", durationMs: Date.now()-startTs-pausedMs };
   addHistory(rec);
   await upload(rec);
   // reset per la chiamata successiva
@@ -177,7 +177,8 @@ async function upload(rec){
   const fd = new FormData();
   fd.append("file", rec.blob, rec.filename);
   fd.append("centro", rec.centro);
-  fd.append("timestamp", rec.ts);
+  fd.append("inizio", rec.inizio);
+  fd.append("fine", rec.ts);
   fd.append("filename", rec.filename);
   fd.append("durata_sec", String(Math.round(rec.durationMs/1000)));
   fd.append("mime", rec.blob.type);
